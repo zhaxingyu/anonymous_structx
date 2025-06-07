@@ -6,6 +6,9 @@ from queue import Queue
 from threading import Thread
 from typing import Union
 
+import transformers
+
+
 class Stream(transformers.StoppingCriteria):
     def __init__(self, callback_func=None):
         self.callback_func = callback_func

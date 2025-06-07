@@ -8,8 +8,8 @@ import torch
 import torch_geometric.utils
 from torch import nn
 import torch.nn.functional as F
-from .model_utils import *
-from .grit import *
+from llama.model_utils import *
+from llama.grit import *
 from typing import List, Optional, Tuple, Union
 from torch_geometric.nn.pool import global_max_pool, global_mean_pool
 

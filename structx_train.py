@@ -11,11 +11,13 @@ from tqdm import tqdm
 from pathlib import Path
 from accelerate import Accelerator
 from config import *
-from transformers import default_data_collator
+from transformers import default_data_collator, LlamaTokenizer
 from accelerate import DistributedDataParallelKwargs
+from accelerate.state import AcceleratorState
 
 import os
 from utils import *
+#from auxiliary.token import load_dataset
 from llama import Transformer, ModelArgs
 from datetime import timedelta
 from accelerate.utils import InitProcessGroupKwargs
@@ -24,7 +26,9 @@ from accelerate.utils import InitProcessGroupKwargs
 torch.backends.cuda.enable_mem_efficient_sdp(True)
 torch.backends.cuda.enable_flash_sdp(True)
 
+import deepspeed
 
+wandb.login(key="ed620b937040a79aa987e59ab8195525bcdd8dca")
 def main(args, SEED):
     group = f"{args.dataset}"
     accelerator.init_trackers(project_name=f"{args.project}",
@@ -121,17 +125,33 @@ def main(args, SEED):
 
 
     model_args.vocab_size = tokenizer.vocab_size
-    torch.set_default_tensor_type(torch.cuda.BFloat16Tensor)
-    base_model: Transformer = Transformer(params=model_args, edge_index=edge_index,
-                                          input_ids=original_dataset['input_ids'],
-                                          input_attention_mask=original_dataset['attention_mask'],
-                                          )
-    torch.set_default_tensor_type(torch.FloatTensor)
+    is_zero3 = False
+    if accelerator.distributed_type == "DEEPSPEED":
+        if AcceleratorState().deepspeed_plugin.zero_stage == 3:
+            is_zero3 = True
+            accelerator.print("ZeRO-3 is enabled. Using deepspeed.zero.Init() for model instantiation.")
+
+    with deepspeed.zero.Init(enabled=is_zero3):
+        torch.set_default_tensor_type(torch.cuda.BFloat16Tensor)
+        base_model: Transformer = Transformer(params=model_args, edge_index=edge_index,
+                                              input_ids=original_dataset['input_ids'],
+                                              input_attention_mask=original_dataset['attention_mask'],
+                                              )
+        torch.set_default_tensor_type(torch.FloatTensor)
 
 
-    ckpt = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
-    ckpt = torch.load(ckpt, map_location='cpu')
-    base_model.load_state_dict(ckpt, strict=False)
+    # # 在调用 accelerator.prepare() 之前，在 CPU 上为 base_model 加载权重。
+    # # 这样可以避免所有与 GatheredParameters 和 dtype 不匹配相关的问题。
+    # ckpt_path = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
+    # accelerator.print(f"Loading checkpoint from {ckpt_path} onto base model BEFORE accelerator.prepare()")
+    # # 仅在主进程上执行加载操作，以避免I/O和内存浪费
+    # if accelerator.is_main_process:
+    #     ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
+    #     base_model.load_state_dict(ckpt_state_dict, strict=False)
+    #     # 立即释放 state_dict 占用的内存
+    #     del ckpt_state_dict
+    #     gc.collect()
+    # accelerator.wait_for_everyone()
 
 
     accelerator.print(model_args)
@@ -160,13 +180,70 @@ def main(args, SEED):
         ],
         betas=(0.9, 0.95))
 
-    trainable_params, all_param = base_model.print_trainable_params()
-    accelerator.print(
-        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}")
-
     model, train_loader, val_loader, val_loader_eval, optimizer = accelerator.prepare(base_model, train_loader,
                                                                                       val_loader, val_loader_eval,
                                                                                       optimizer)
+    ckpt_path = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
+    accelerator.print(f"Loading checkpoint from {ckpt_path} AFTER accelerator.prepare()")
+    # --- 使用 accelerator.unwrap_model(model) ---
+    # 这会返回被 DeepSpeed 和 Accelerate 完全初始化后的原始 Transformer 模型
+    unwrapped_model = accelerator.unwrap_model(model)
+    trainable_params, all_param = unwrapped_model.print_trainable_params()
+
+    # 添加一个保护性检查，防止意外的 ZeroDivisionError
+    if all_param > 0:
+        accelerator.print(
+            f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}")
+    else:
+        accelerator.print("Trainable parameter count will be available after the first forward pass in ZeRO-3.")
+
+    # ckpt_path = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
+    # accelerator.print(f"Loading checkpoint from {ckpt_path} after accelerator.prepare()")
+    #
+    # if is_zero3:
+    #     # 对于 ZeRO-3，需要使用特殊的加载方式
+    #     # accelerator.load_state_dict 无法直接使用，因为它期望一个完整的 state_dict
+    #     # 我们需要用 DeepSpeed Engine 的 API 来加载
+    #
+    #     # 从 accelerator 中获取 deepspeed engine 对象
+    #     deepspeed_engine = accelerator.unwrap_model(model)
+    #
+    #     # DeepSpeedEngine 有一个 load_checkpoint 方法，但它通常用于加载其自己保存的checkpoint
+    #     # 从一个普通的 PyTorch checkpoint 加载到 ZeRO-3 模型，最安全的方式是逐参数加载
+    #     # 在主进程加载权重，然后分散给所有进程
+    #     # 1. 在主进程上加载 checkpoint 到 CPU
+    #     if accelerator.is_main_process:
+    #         ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
+    #
+    #     # 2. 等待主进程加载完成
+    #     accelerator.wait_for_everyone()
+    #
+    #     # 3. 使用 GatheredParameters 上下文管理器
+    #     # 这个上下文管理器会临时将所有分片的参数在 rank 0 上聚合
+    #     # 让我们可以在这个上下文中像操作一个普通模型一样加载权重
+    #     accelerator.print("Forcing model parameters to bfloat16 to ensure dtype consistency for GatheredParameters.")
+    #     unwrapped_model.to(torch.bfloat16)
+    #     with deepspeed.zero.GatheredParameters(unwrapped_model.parameters(), modifier_rank=0):
+    #         if accelerator.is_main_process:
+    #             # 只有主进程（modifier_rank=0）持有完整的、未分片的参数，所以只有它需要加载
+    #             accelerator.print("Loading state dict on main process...")
+    #
+    #             # 使用 unwrapped_model 来加载
+    #             unwrapped_model.load_state_dict(ckpt_state_dict, strict=False)
+    #
+    #             accelerator.print("State dict loaded successfully on main process.")
+    #
+    #     # 4. 再次同步，确保所有进程都等待加载完成
+    #     # GatheredParameters 退出时，rank 0 会将更新后的权重自动分散回所有进程
+    #     accelerator.wait_for_everyone()
+    #     accelerator.print("Weights distributed to all processes.")
+    #
+    # else:
+    #     # 对于非 ZeRO-3 模式 (ZeRO-2, DDP, etc.)
+    #     if accelerator.is_main_process:
+    #         ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
+    #         unwrapped_model.load_state_dict(ckpt_state_dict, strict=False)
+    #     accelerator.wait_for_everyone()
 
     # Step 5. Training
     num_training_steps = args.num_epochs * len(train_loader)
@@ -181,23 +258,23 @@ def main(args, SEED):
 
         for step, batch in enumerate(train_loader):
 
+            # 与Zero3不兼容
+            #with accelerator.accumulate(model):
+            optimizer.zero_grad()
+            loss = model(**batch)
+            accelerator.backward(loss)
 
-            with accelerator.accumulate(model):
-                optimizer.zero_grad()
-                loss = model(**batch)
-                accelerator.backward(loss)
+            accelerator.clip_grad_norm_(optimizer.param_groups[0]['params'], 0.1)
+            accelerator.clip_grad_norm_(optimizer.param_groups[1]['params'], 0.1)
 
-                accelerator.clip_grad_norm_(optimizer.param_groups[0]['params'], 0.1)
-                accelerator.clip_grad_norm_(optimizer.param_groups[1]['params'], 0.1)
+            if (step + 1) % args.grad_steps == 0:
+                adjust_learning_rate(optimizer.param_groups[0], lr_group['adapter'], step / len(train_loader) + epoch,
+                                     args)
+                adjust_learning_rate(optimizer.param_groups[1], lr_group['lora'], step / len(train_loader) + epoch,
+                                     args)
 
-                if (step + 1) % args.grad_steps == 0:
-                    adjust_learning_rate(optimizer.param_groups[0], lr_group['adapter'], step / len(train_loader) + epoch,
-                                         args)
-                    adjust_learning_rate(optimizer.param_groups[1], lr_group['lora'], step / len(train_loader) + epoch,
-                                         args)
-
-                optimizer.step()
-                epoch_loss, accum_loss = epoch_loss + loss.item(), accum_loss + loss.item()
+            optimizer.step()
+            epoch_loss, accum_loss = epoch_loss + loss.item(), accum_loss + loss.item()
 
 
             if (step + 1) % args.grad_steps == 0:
@@ -313,6 +390,12 @@ def main(args, SEED):
 
     # Step 6. Post-processing & Evaluating
     if accelerator.is_local_main_process:
+#        if hasattr(args, 'save_dir') and args.save_dir and best_model is not None:  # 确保 best_model 被赋值
+#            output_dir = Path(args.save_dir)
+#            output_dir.mkdir(parents=True, exist_ok=True)
+#            model_save_path = output_dir / f"{args.model_name}_seed{SEED}_best_epoch{best_epoch}.pt"  # 使用 args.model_name 和 SEED 区分
+#            torch.save(best_model.state_dict(), model_save_path)
+#            accelerator.print(f"Best model saved to {model_save_path}")
         eval_decode_output = []
         for batch_output in eval_output:
             eval_decode_output.extend(tokenizer.batch_decode(batch_output, skip_special_tokens=False))

@@ -3,7 +3,7 @@ import torch
 from copy import deepcopy
 from datasets import DatasetDict
 from torch.utils.data import Dataset
-from torch.utils.data.dataset import T_co
+from torch.utils.data.dataset import _T_co
 from tqdm import tqdm
 
 class Constructor(object):
@@ -16,7 +16,6 @@ class Constructor(object):
         train_dataset = TrainDataset(self.args, raw_datasets['train'], cache_root)
         dev_dataset = DevDataset(self.args, raw_datasets['validation'], cache_root)
         test_dataset = TestDataset(self.args, raw_datasets['test'], cache_root)
-
         return train_dataset, dev_dataset, test_dataset
 
 
@@ -58,7 +57,7 @@ class TrainDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.data[index]
 
     def __len__(self):
@@ -89,7 +88,7 @@ class DevDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.data[index]
 
     def __len__(self):
@@ -120,7 +119,7 @@ class TestDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.data[index]
 
     def __len__(self):
