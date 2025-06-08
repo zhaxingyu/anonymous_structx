@@ -5,6 +5,9 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 This repository contains the official implementation of the Struct-X framework as described in our paper: "Struct-X: Enhancing the Reasoning Capabilities of Large Language Models in Structured Data Scenarios" (ACMKDD 2025).
+## Branch Info
+Modified for Fp16 Muti-GPU Training.
+Go to my_config_0.yaml, change gpu_ids and num_processes to fit your working condition.
 
 ## Overview
 
