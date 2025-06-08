@@ -272,7 +272,8 @@ def main(args, SEED):
             if (step + 1) % args.grad_steps == 0:
                 adjust_learning_rate(optimizer.param_groups[0], lr_group['adapter'], step / len(train_loader) + epoch,
                                      args)
-                adjust_learning_rate(optimizer.param_groups[1], lr_group['lora'], step / len(train_loader) + epoch,
+                if num_groups == 2:
+                     adjust_learning_rate(optimizer.param_groups[1], lr_group['lora'], step / len(train_loader) + epoch,
                                      args)
 
             optimizer.step()
@@ -281,9 +282,9 @@ def main(args, SEED):
 
             if (step + 1) % args.grad_steps == 0:
                 adapter_lr = optimizer.param_groups[0]["lr"]
-                lora_lr = optimizer.param_groups[1]["lr"]
-
-                accelerator.log({'Adapter Lr': adapter_lr, 'Lora Lr': lora_lr})
+                if num_groups == 2:
+                    lora_lr = optimizer.param_groups[1]["lr"]
+                    accelerator.log({'Adapter Lr': adapter_lr, 'Lora Lr': lora_lr})
                 accelerator.log({'Accum Loss': accum_loss / args.grad_steps})
                 accelerator.print(f"Accum Loss: {accum_loss / args.grad_steps}")
                 accum_loss = 0.

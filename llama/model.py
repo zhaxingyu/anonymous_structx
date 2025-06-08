@@ -502,7 +502,7 @@ class Transformer(nn.Module):
 
         h = self.norm(h)
         output = self.output(h[:, -1, :])
-        return output.to(torch.bfloat16)
+        return output.to(torch.float16)
 
     # llama/model.py
     def adapter_forward(self, batch_size, node_ids):
@@ -550,12 +550,12 @@ class Transformer(nn.Module):
             edge_index_full, input_node_pair_embed = add_full_rrwp(edge_index_sub, num_nodes=len(subset),
                                                                    walk_length=self.rrwp
                                                                    )
-            input_node_pair_embed = input_node_pair_embed.to(torch.bfloat16)
+            input_node_pair_embed = input_node_pair_embed.to(torch.float16)
 
             # 使用 input_ids_on_device 和 input_attention_mask_on_device
             adapter_input_ids, adapter_input_attn = input_ids_on_device[subset], input_attention_mask_on_device[subset]
             adapter_inputs_embeds = self.tok_embeddings(adapter_input_ids)
-            adapter_inputs_embeds = adapter_inputs_embeds.to(torch.bfloat16)
+            adapter_inputs_embeds = adapter_inputs_embeds.to(torch.float16)
             adapter_inputs_embeds = self.down_projection(adapter_inputs_embeds)
             adapter_inputs_embeds = self.graph_adapter_encoder(adapter_inputs_embeds, adapter_input_attn)
 
@@ -668,8 +668,8 @@ class PrefixEncoder(nn.Module):
         super().__init__()
         self.dim = params.dim
         self.adapter_len, self.adapter_layer = params.adapter_len, params.n_layers
-        self.prefix_keys = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.bfloat16), requires_grad=True)
-        self.prefix_values = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.bfloat16), requires_grad=True)
+        self.prefix_keys = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.float16), requires_grad=True)
+        self.prefix_values = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.float16), requires_grad=True)
 
         nn.init.xavier_normal_(self.prefix_values)
         nn.init.xavier_normal_(self.prefix_keys)
@@ -957,7 +957,7 @@ class CrossAttentionLayer(nn.Module):
 
         input_attn = input_attn.view(N, 1, 1, src_seqlen).repeat(1, 1, trg_seqlen, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).to(torch.bfloat16)
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).to(torch.float16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn if input_attn is not None else None)
         output = output.transpose(1, 2).contiguous().view(N, trg_seqlen, -1)
@@ -1058,7 +1058,7 @@ class EncoderSelfAttention(nn.Module):
 
         input_attn = input_attn.view(_bsz, 1, 1, query_len).repeat(1, 1, query_len, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).to(torch.bfloat16)
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).to(torch.float16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn)
 
