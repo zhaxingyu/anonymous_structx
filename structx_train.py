@@ -28,7 +28,7 @@ torch.backends.cuda.enable_flash_sdp(True)
 
 import deepspeed
 
-wandb.login(key="ed620b937040a79aa987e59ab8195525bcdd8dca")
+
 def main(args, SEED):
     group = f"{args.dataset}"
     accelerator.init_trackers(project_name=f"{args.project}",
@@ -132,12 +132,12 @@ def main(args, SEED):
             accelerator.print("ZeRO-3 is enabled. Using deepspeed.zero.Init() for model instantiation.")
 
     with deepspeed.zero.Init(enabled=is_zero3):
-        torch.set_default_tensor_type(torch.cuda.BFloat16Tensor)
+        # torch.set_default_tensor_type(torch.cuda.BFloat16Tensor)
         base_model: Transformer = Transformer(params=model_args, edge_index=edge_index,
                                               input_ids=original_dataset['input_ids'],
                                               input_attention_mask=original_dataset['attention_mask'],
                                               )
-        torch.set_default_tensor_type(torch.FloatTensor)
+        # torch.set_default_tensor_type(torch.FloatTensor)
 
 
     # # 在调用 accelerator.prepare() 之前，在 CPU 上为 base_model 加载权重。
@@ -176,10 +176,11 @@ def main(args, SEED):
     optimizer = torch.optim.AdamW(
         [
             {'params': param_adapter, 'lr': lr_group['adapter'], 'weight_decay': wd_group['adapter']},
-            {'params': param_lora, 'lr': lr_group['lora'], 'weight_decay': wd_group['lora']},
+            *([{'params': param_lora, 'lr': lr_group['lora'], 'weight_decay': wd_group['lora']}]
+              if len(param_lora) else [])
         ],
         betas=(0.9, 0.95))
-
+    num_groups = len(optimizer.param_groups)
     model, train_loader, val_loader, val_loader_eval, optimizer = accelerator.prepare(base_model, train_loader,
                                                                                       val_loader, val_loader_eval,
                                                                                       optimizer)
@@ -265,7 +266,8 @@ def main(args, SEED):
             accelerator.backward(loss)
 
             accelerator.clip_grad_norm_(optimizer.param_groups[0]['params'], 0.1)
-            accelerator.clip_grad_norm_(optimizer.param_groups[1]['params'], 0.1)
+            if num_groups == 2:
+                accelerator.clip_grad_norm_(optimizer.param_groups[1]['params'], 0.1)
 
             if (step + 1) % args.grad_steps == 0:
                 adjust_learning_rate(optimizer.param_groups[0], lr_group['adapter'], step / len(train_loader) + epoch,

@@ -240,10 +240,17 @@ class Attention(nn.Module):
             adapter_key, adapter_value = adapter
             adapter_len = adapter_key.shape[1]
 
-            adapter_k = self.wk(adapter_key)
+            # =================== 关键修复 ===================
+            # 将输入强制转换为 Half (float16) 来满足底层 CUDA kernel 的要求
+            adapter_key_half = adapter_key.to(torch.half)
+            adapter_value_half = adapter_value.to(torch.half)
+
+            adapter_k = self.wk(adapter_key_half)
             adapter_k = adapter_k.view(bsz, adapter_len, self.n_heads, self.head_dim)
-            adapter_v = self.wv(adapter_value)
+
+            adapter_v = self.wv(adapter_value_half)
             adapter_v = adapter_v.view(bsz, adapter_len, self.n_heads, self.head_dim)
+            # ===============================================
 
             adapter_k = apply_rotary_emb_single(adapter_k, freqs_cis=freqs_cis_prefix)
 
@@ -432,7 +439,7 @@ class Transformer(nn.Module):
 
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, attention_mask,
-                      (adapter_key[:, adapter_index].bfloat16(), adapter_value[:, adapter_index].bfloat16()),
+                      (adapter_key[:, adapter_index], adapter_value[:, adapter_index]),
                       freqs_cis_prefix)
 
             adapter_index = adapter_index + 1
@@ -487,7 +494,7 @@ class Transformer(nn.Module):
             adapter_key, adapter_value = adapter[0], adapter[1]
             for i, layer in enumerate(self.layers):
                 h = layer(h, start_pos, freqs_cis, attention_mask,
-                          (adapter_key[:, adapter_index].bfloat16(), adapter_value[:, adapter_index].bfloat16()),
+                          (adapter_key[:, adapter_index], adapter_value[:, adapter_index]),
                           freqs_cis_prefix if self.w_adapter else None,
                           )
                 adapter_index = adapter_index + 1
@@ -495,7 +502,7 @@ class Transformer(nn.Module):
 
         h = self.norm(h)
         output = self.output(h[:, -1, :])
-        return output.float()
+        return output.to(torch.bfloat16)
 
     # llama/model.py
     def adapter_forward(self, batch_size, node_ids):
@@ -543,11 +550,12 @@ class Transformer(nn.Module):
             edge_index_full, input_node_pair_embed = add_full_rrwp(edge_index_sub, num_nodes=len(subset),
                                                                    walk_length=self.rrwp
                                                                    )
+            input_node_pair_embed = input_node_pair_embed.to(torch.bfloat16)
 
             # 使用 input_ids_on_device 和 input_attention_mask_on_device
             adapter_input_ids, adapter_input_attn = input_ids_on_device[subset], input_attention_mask_on_device[subset]
             adapter_inputs_embeds = self.tok_embeddings(adapter_input_ids)
-            adapter_inputs_embeds = adapter_inputs_embeds.float()
+            adapter_inputs_embeds = adapter_inputs_embeds.to(torch.bfloat16)
             adapter_inputs_embeds = self.down_projection(adapter_inputs_embeds)
             adapter_inputs_embeds = self.graph_adapter_encoder(adapter_inputs_embeds, adapter_input_attn)
 
@@ -626,11 +634,11 @@ class Transformer(nn.Module):
         for name, param in self.named_parameters():
             if any(n in name for n in adapter):
                 param.requires_grad = True
-                param.data = param.data.float()
+                # param.data = param.data.float()
                 param_adapter.append(param)
             elif "lora" in name:
                 param.requires_grad = True
-                param.data = param.data.float()
+                # param.data = param.data.float()
                 param_lora.append(param)
             else:
                 param.requires_grad = False
@@ -660,8 +668,8 @@ class PrefixEncoder(nn.Module):
         super().__init__()
         self.dim = params.dim
         self.adapter_len, self.adapter_layer = params.adapter_len, params.n_layers
-        self.prefix_keys = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim), requires_grad=True)
-        self.prefix_values = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim), requires_grad=True)
+        self.prefix_keys = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.bfloat16), requires_grad=True)
+        self.prefix_values = nn.Parameter(torch.randn(1, self.adapter_layer, self.adapter_len, self.dim, dtype=torch.bfloat16), requires_grad=True)
 
         nn.init.xavier_normal_(self.prefix_values)
         nn.init.xavier_normal_(self.prefix_keys)
@@ -949,7 +957,7 @@ class CrossAttentionLayer(nn.Module):
 
         input_attn = input_attn.view(N, 1, 1, src_seqlen).repeat(1, 1, trg_seqlen, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).float()
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).to(torch.bfloat16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn if input_attn is not None else None)
         output = output.transpose(1, 2).contiguous().view(N, trg_seqlen, -1)
@@ -1050,7 +1058,7 @@ class EncoderSelfAttention(nn.Module):
 
         input_attn = input_attn.view(_bsz, 1, 1, query_len).repeat(1, 1, query_len, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).float()
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).to(torch.bfloat16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn)
 

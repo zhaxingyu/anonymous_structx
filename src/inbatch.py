@@ -80,7 +80,7 @@ class InBatch(nn.Module):
         iter_stats[f"{stats_prefix}loss"] = (loss.item(), bsz)
 
         predicted_idx = torch.argmax(scores, dim=-1)
-        accuracy = 100 * (predicted_idx == labels).float().mean()
+        accuracy = 100 * (predicted_idx == labels).to(torch.bfloat16).mean()
         stdq = torch.std(qemb, dim=0).mean().item()
         stdk = torch.std(kemb, dim=0).mean().item()
         iter_stats[f"{stats_prefix}accuracy"] = (accuracy, bsz)

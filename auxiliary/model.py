@@ -494,7 +494,7 @@ class Transformer(nn.Module):
 
         h = self.norm(h)
         output = self.output(h[:, -1, :])
-        return output.float()
+        return output.to(torch.bfloat16)
 
 
     def adapter_forward(self, batch_size, node_ids):
@@ -529,7 +529,7 @@ class Transformer(nn.Module):
             adapter_input_ids, adapter_input_attn = self.input_ids[subset], self.input_attention_mask[subset]
             adapter_inputs_embeds = self.tok_embeddings(adapter_input_ids)
 
-            adapter_inputs_embeds = adapter_inputs_embeds.float()
+            adapter_inputs_embeds = adapter_inputs_embeds.to(torch.bfloat16)
             adapter_inputs_embeds = self.down_projection(adapter_inputs_embeds)
             adapter_inputs_embeds = self.graph_adapter_encoder(adapter_inputs_embeds, adapter_input_attn)
 
@@ -609,11 +609,11 @@ class Transformer(nn.Module):
         for name, param in self.named_parameters():
             if any(n in name for n in adapter):
                 param.requires_grad = True
-                param.data = param.data.float()
+                param.data = param.data.to(torch.bfloat16)
                 param_adapter.append(param)
             elif "lora" in name:
                 param.requires_grad = True
-                param.data = param.data.float()
+                param.data = param.data.to(torch.bfloat16)
                 param_lora.append(param)
             else:
                 param.requires_grad = False
@@ -932,7 +932,7 @@ class CrossAttentionLayer(nn.Module):
 
         input_attn = input_attn.view(N, 1, 1, src_seqlen).repeat(1, 1, trg_seqlen, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).float()
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(input_embeds.dtype).min).to(torch.bfloat16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn if input_attn is not None else None)
         output = output.transpose(1, 2).contiguous().view(N, trg_seqlen, -1)
@@ -1033,7 +1033,7 @@ class EncoderSelfAttention(nn.Module):
 
         input_attn = input_attn.view(_bsz, 1, 1, query_len).repeat(1, 1, query_len, 1)
         input_attn = 1.0 - input_attn
-        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).float()
+        input_attn = input_attn.masked_fill(input_attn.to(torch.bool), torch.finfo(query.dtype).min).to(torch.bfloat16)
 
         output = F.scaled_dot_product_attention(xq, xk, xv, input_attn)
 
