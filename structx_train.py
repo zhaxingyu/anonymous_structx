@@ -15,7 +15,6 @@ from transformers import default_data_collator, LlamaTokenizer
 from accelerate import DistributedDataParallelKwargs
 from accelerate.state import AcceleratorState
 
-import os
 from utils import *
 #from auxiliary.token import load_dataset
 from llama import Transformer, ModelArgs
@@ -139,21 +138,6 @@ def main(args, SEED):
                                               )
         # torch.set_default_tensor_type(torch.FloatTensor)
 
-
-    # # 在调用 accelerator.prepare() 之前，在 CPU 上为 base_model 加载权重。
-    # # 这样可以避免所有与 GatheredParameters 和 dtype 不匹配相关的问题。
-    # ckpt_path = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
-    # accelerator.print(f"Loading checkpoint from {ckpt_path} onto base model BEFORE accelerator.prepare()")
-    # # 仅在主进程上执行加载操作，以避免I/O和内存浪费
-    # if accelerator.is_main_process:
-    #     ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
-    #     base_model.load_state_dict(ckpt_state_dict, strict=False)
-    #     # 立即释放 state_dict 占用的内存
-    #     del ckpt_state_dict
-    #     gc.collect()
-    # accelerator.wait_for_everyone()
-
-
     accelerator.print(model_args)
 
     # Step 4 Set Optimizer
@@ -197,54 +181,6 @@ def main(args, SEED):
             f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}")
     else:
         accelerator.print("Trainable parameter count will be available after the first forward pass in ZeRO-3.")
-
-    # ckpt_path = Path(f"{module_path}/{args.model_name}/consolidated.00.pth")
-    # accelerator.print(f"Loading checkpoint from {ckpt_path} after accelerator.prepare()")
-    #
-    # if is_zero3:
-    #     # 对于 ZeRO-3，需要使用特殊的加载方式
-    #     # accelerator.load_state_dict 无法直接使用，因为它期望一个完整的 state_dict
-    #     # 我们需要用 DeepSpeed Engine 的 API 来加载
-    #
-    #     # 从 accelerator 中获取 deepspeed engine 对象
-    #     deepspeed_engine = accelerator.unwrap_model(model)
-    #
-    #     # DeepSpeedEngine 有一个 load_checkpoint 方法，但它通常用于加载其自己保存的checkpoint
-    #     # 从一个普通的 PyTorch checkpoint 加载到 ZeRO-3 模型，最安全的方式是逐参数加载
-    #     # 在主进程加载权重，然后分散给所有进程
-    #     # 1. 在主进程上加载 checkpoint 到 CPU
-    #     if accelerator.is_main_process:
-    #         ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
-    #
-    #     # 2. 等待主进程加载完成
-    #     accelerator.wait_for_everyone()
-    #
-    #     # 3. 使用 GatheredParameters 上下文管理器
-    #     # 这个上下文管理器会临时将所有分片的参数在 rank 0 上聚合
-    #     # 让我们可以在这个上下文中像操作一个普通模型一样加载权重
-    #     accelerator.print("Forcing model parameters to bfloat16 to ensure dtype consistency for GatheredParameters.")
-    #     unwrapped_model.to(torch.bfloat16)
-    #     with deepspeed.zero.GatheredParameters(unwrapped_model.parameters(), modifier_rank=0):
-    #         if accelerator.is_main_process:
-    #             # 只有主进程（modifier_rank=0）持有完整的、未分片的参数，所以只有它需要加载
-    #             accelerator.print("Loading state dict on main process...")
-    #
-    #             # 使用 unwrapped_model 来加载
-    #             unwrapped_model.load_state_dict(ckpt_state_dict, strict=False)
-    #
-    #             accelerator.print("State dict loaded successfully on main process.")
-    #
-    #     # 4. 再次同步，确保所有进程都等待加载完成
-    #     # GatheredParameters 退出时，rank 0 会将更新后的权重自动分散回所有进程
-    #     accelerator.wait_for_everyone()
-    #     accelerator.print("Weights distributed to all processes.")
-    #
-    # else:
-    #     # 对于非 ZeRO-3 模式 (ZeRO-2, DDP, etc.)
-    #     if accelerator.is_main_process:
-    #         ckpt_state_dict = torch.load(ckpt_path, map_location="cpu")
-    #         unwrapped_model.load_state_dict(ckpt_state_dict, strict=False)
-    #     accelerator.wait_for_everyone()
 
     # Step 5. Training
     num_training_steps = args.num_epochs * len(train_loader)
@@ -302,6 +238,8 @@ def main(args, SEED):
         model.eval()
 
         with torch.no_grad():
+            # 使用 tqdm 包装 val_loader
+            val_loader = tqdm(val_loader, desc=f"Epoch {epoch} Val Loss", disable=not accelerator.is_local_main_process)
             for step, batch in enumerate(val_loader):
                 loss = model(**batch)
                 val_loss += loss.item()
@@ -309,8 +247,8 @@ def main(args, SEED):
             accelerator.print(f"Epoch: {epoch}|{args.num_epochs}: Val Loss: {val_loss / len(val_loader)}")
             accelerator.log({'Val Loss': val_loss / len(val_loader)})
 
-
-
+            # 使用 tqdm 包装 val_loader_eval
+            val_loader_eval = tqdm(val_loader_eval, desc=f"Epoch {epoch} Generating", disable=not accelerator.is_local_main_process)
             for step, batch in enumerate(val_loader_eval):
                 kwargs = {}
                 kwargs.update(
@@ -318,6 +256,10 @@ def main(args, SEED):
                      "attention_mask": batch['attention_mask'], "max_new_tokens": 15})
 
                 generated_tokens = accelerator.unwrap_model(model).generate(**kwargs)
+                # 在 gather 之前，先将不同进程的 token 补齐到相同长度
+                generated_tokens = accelerator.pad_across_processes(
+                    generated_tokens, dim=1, pad_index=tokenizer.pad_token_id
+                )
                 generated_tokens_gathered = accelerator.gather(generated_tokens).cpu().numpy()
 
                 if accelerator.num_processes > 1:
@@ -393,13 +335,20 @@ def main(args, SEED):
 
     # Step 6. Post-processing & Evaluating
     if accelerator.is_local_main_process:
-#        if hasattr(args, 'save_dir') and args.save_dir and best_model is not None:  # 确保 best_model 被赋值
-#            output_dir = Path(args.save_dir)
-#            output_dir.mkdir(parents=True, exist_ok=True)
-#            model_save_path = output_dir / f"{args.model_name}_seed{SEED}_best_epoch{best_epoch}.pt"  # 使用 args.model_name 和 SEED 区分
-#            torch.save(best_model.state_dict(), model_save_path)
-#            accelerator.print(f"Best model saved to {model_save_path}")
-        eval_decode_output = []
+        # 检查 save_dir 是否被指定，并且 best_model 是否已经被成功创建
+        if args.save_dir and 'best_model' in locals() and best_model is not None:
+            output_dir = Path(args.save_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # 创建一个清晰的文件名
+            model_save_path = output_dir / f"{args.dataset}_{args.model_name}_seed{SEED}_best_epoch{best_epoch}.pt"
+
+            # 保存模型的 state_dict
+            torch.save(best_model.state_dict(), model_save_path)
+            accelerator.print(f"Best model saved to {model_save_path}")
+        else:
+            accelerator.print("Model saving skipped: `save_dir` not provided or `best_model` not found.")
+            eval_decode_output = []
         for batch_output in eval_output:
             eval_decode_output.extend(tokenizer.batch_decode(batch_output, skip_special_tokens=False))
 
