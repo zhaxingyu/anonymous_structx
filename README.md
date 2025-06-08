@@ -1,7 +1,7 @@
 # Struct-X: Enhancing the Reasoning Capabilities of Large Language Models in Structured Data Scenarios
 
-![Python 3.8](https://img.shields.io/badge/python-3.8-blue.svg)
-![PyTorch](https://img.shields.io/badge/PyTorch-1.9.0-orange)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.6.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 This repository contains the official implementation of the Struct-X framework as described in our paper: "Struct-X: Enhancing the Reasoning Capabilities of Large Language Models in Structured Data Scenarios" (ACMKDD 2025).
