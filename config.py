@@ -62,7 +62,7 @@ task_level = {
 def parse_args_llama():
     parser = argparse.ArgumentParser(description="GraphLLM")
 
-    parser.add_argument("--project", type=str, default="project_GraphLLM")
+    parser.add_argument("--project", type=str, default="project_StructX")
     parser.add_argument("--exp_num", type=int, default=1)
     parser.add_argument("--model_name", type=str, default='LLaMA-7B-2')
 
@@ -98,8 +98,8 @@ def parse_args_llama():
     # Inference
     parser.add_argument("--eval_batch_size", type=int, default=32)
 
-    parser.add_argument('--save_dir', type=str, default=None,
-                        help='Directory to save the best model checkpoint. If None, model is not saved to disk by this script.')
+    parser.add_argument('--save_dir', type=str, default='./output',
+                        help='Directory to save the best model checkpoint. Default: ./output')
 
     args = parser.parse_args()
     return args
