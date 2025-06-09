@@ -57,7 +57,7 @@ def main(args, SEED):
             remove_columns=[i for i in dataset.column_names if i not in ['node_ids']],
             keep_in_memory=True,
             writer_batch_size=10000,
-            num_proc=1,
+            num_proc=os.cpu_count()//2,
         ).with_format("torch")
 
         clm_dataset_train = dataset.map(
@@ -67,7 +67,7 @@ def main(args, SEED):
             remove_columns=[i for i in dataset.column_names if i not in ['node_ids']],
             keep_in_memory=True,
             writer_batch_size=10000,
-            num_proc=1,
+            num_proc=os.cpu_count()//2,
         ).with_format("torch")
 
 
@@ -78,7 +78,7 @@ def main(args, SEED):
             remove_columns=[i for i in dataset.column_names if i not in ['node_ids', 'label', 'text_label']],
             keep_in_memory=True,
             writer_batch_size=10000,
-            num_proc=1,
+            num_proc=os.cpu_count()//2,
         ).with_format("torch")
 
 
