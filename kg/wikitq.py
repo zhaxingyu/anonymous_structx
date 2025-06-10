@@ -5,7 +5,7 @@ from copy import deepcopy
 import torch
 from datasets import DatasetDict
 from torch.utils.data import Dataset
-from torch.utils.data.dataset import T_co
+from torch.utils.data.dataset import _T_co
 from transformers import AutoTokenizer
 from tqdm import tqdm
 from utils.processor import get_default_processor
@@ -65,7 +65,7 @@ class TrainDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.extended_data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.extended_data[index]
 
     def __len__(self):
@@ -108,7 +108,7 @@ class DevDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.extended_data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.extended_data[index]
 
     def __len__(self):
@@ -151,7 +151,7 @@ class TestDataset(Dataset):
             if args.dataset.use_cache:
                 torch.save(self.extended_data, cache_path)
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index) -> _T_co:
         return self.extended_data[index]
 
     def __len__(self):
