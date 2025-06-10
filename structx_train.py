@@ -240,8 +240,7 @@ def main(args, SEED):
 
         with torch.no_grad():
             # 使用 tqdm 包装 val_loader
-            val_loss_pbar = tqdm(val_loader, desc=f"Epoch {epoch} Val Loss", disable=not accelerator.is_local_main_process)
-            for step, batch in enumerate(val_loader):
+            for step, batch in enumerate(val_loader, desc=f"Epoch {epoch} Val Loss", disable=not accelerator.is_local_main_process):
                 loss = model(**batch)
                 val_loss += loss.item()
 
@@ -249,8 +248,7 @@ def main(args, SEED):
             accelerator.log({'Val Loss': val_loss / len(val_loader)})
 
             # 使用 tqdm 包装 val_loader_eval
-            generate_pbar = tqdm(val_loader_eval, desc=f"Epoch {epoch} Generating", disable=not accelerator.is_local_main_process)
-            for step, batch in enumerate(val_loader_eval):
+            for step, batch in enumerate(tqdm(val_loader_eval, desc=f"Epoch {epoch} Generating", disable=not accelerator.is_local_main_process)):
                 kwargs = {}
                 kwargs.update(
                     {"node_ids": batch['node_ids'], "input_ids": batch['input_ids'],
