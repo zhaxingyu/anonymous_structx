@@ -27,7 +27,6 @@ torch.backends.cuda.enable_flash_sdp(True)
 
 import deepspeed
 
-
 def main(args, SEED):
     group = f"{args.dataset}"
     accelerator.init_trackers(project_name=f"{args.project}",
