@@ -16,7 +16,6 @@ from accelerate import DistributedDataParallelKwargs
 from accelerate.state import AcceleratorState
 
 from utils import *
-#from auxiliary.token import load_dataset
 from llama import Transformer, ModelArgs
 from datetime import timedelta
 from accelerate.utils import InitProcessGroupKwargs
@@ -26,7 +25,6 @@ torch.backends.cuda.enable_mem_efficient_sdp(True)
 torch.backends.cuda.enable_flash_sdp(True)
 
 import deepspeed
-
 
 def main(args, SEED):
     group = f"{args.dataset}"
