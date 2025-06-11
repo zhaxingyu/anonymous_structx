@@ -17,7 +17,6 @@ from accelerate.state import AcceleratorState
 
 import os
 from utils import *
-#from auxiliary.token import load_dataset
 from llama import Transformer, ModelArgs
 from datetime import timedelta
 from accelerate.utils import InitProcessGroupKwargs
