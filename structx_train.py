@@ -16,7 +16,6 @@ from accelerate import DistributedDataParallelKwargs
 from accelerate.state import AcceleratorState
 
 from utils import *
-#from auxiliary.token import load_dataset
 from llama import Transformer, ModelArgs
 from datetime import timedelta
 from accelerate.utils import InitProcessGroupKwargs
