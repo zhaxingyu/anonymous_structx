@@ -3,7 +3,7 @@ import argparse
 import random
 import jsonlines
 import datasets
-from task_instructions import TASK_INST
+from injection.data import TASK_INST
 
 
 def main():
