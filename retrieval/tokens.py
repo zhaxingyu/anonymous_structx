@@ -11,7 +11,7 @@ from transformers import Trainer
 import json
 import io
 import os
-from ..retrieval_lm.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
+from auxiliary.llama2 import replace_llama_attn_with_flash_attn
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
