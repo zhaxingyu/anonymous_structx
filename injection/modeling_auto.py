@@ -15,7 +15,7 @@ from transformers.models.albert.modeling_albert import (
     AlbertModel,
 )
 # Instead of loading the BART from the transformers==4.9.1, we choose to load from our own prefix-tuning version.
-from .modeling_bart import (
+from injection.modeling_bart import (
     BartForConditionalGeneration,
     BartModel,
 )
@@ -255,7 +255,7 @@ from transformers.models.squeezebert.modeling_squeezebert import (
     SqueezeBertModel,
 )
 # Instead of loading the T5 from the transformers==4.9.1, we choose to load from our prefix-tuning version.
-from .modeling_t5 import T5ForConditionalGeneration, T5Model
+from injection.modeling_t5 import T5ForConditionalGeneration, T5Model
 from transformers.models.tapas.modeling_tapas import (
     TapasForMaskedLM,
     TapasForQuestionAnswering,
@@ -297,7 +297,7 @@ from transformers.models.xlnet.modeling_xlnet import (
     XLNetModel,
 )
 from transformers.models.auto.auto_factory import _BaseAutoModelClass, auto_class_update
-from transformers.models.auto.configuration_auto import (
+from transformers import (
     AlbertConfig,
     BartConfig,
     BertConfig,
@@ -342,24 +342,24 @@ from transformers.models.auto.configuration_auto import (
     PegasusConfig,
     ProphetNetConfig,
     ReformerConfig,
-    RetriBertConfig,
     RobertaConfig,
     RoFormerConfig,
     Speech2TextConfig,
     SqueezeBertConfig,
     T5Config,
     TapasConfig,
-    TransfoXLConfig,
     VisualBertConfig,
     ViTConfig,
     Wav2Vec2Config,
     XLMConfig,
-    XLMProphetNetConfig,
     XLMRobertaConfig,
     XLNetConfig,
 )
-
-
+from transformers.models.retribert.configuration_retribert import RetriBertConfig
+from transformers.models.retribert.modeling_retribert import RetriBertModel
+from transformers.models.retribert.tokenization_retribert import RetriBertTokenizer
+from transformers.models.transfo_xl.configuration_transfo_xl import TransfoXLConfig
+from transformers.models.xlm_prophetnet.configuration_xlm_prophetnet import XLMProphetNetConfig
 logger = logging.get_logger(__name__)
 
 

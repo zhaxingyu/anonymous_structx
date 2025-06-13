@@ -7,7 +7,7 @@ from torch import nn
 from transformers import AutoTokenizer
 
 from .base import PushToHubFriendlyModel
-from ..prompt.modeling_auto import AutoModelForSeq2SeqLM
+from .modeling_auto import AutoModelForSeq2SeqLM
 
 
 def aggregate_prompt(
@@ -200,8 +200,8 @@ class Model(PushToHubFriendlyModel):
         )
         self.pretrain_model = AutoModelForSeq2SeqLM.from_pretrained(args.bert.location)
         self.config = self.pretrain_model.config
-        from ..prompt.modeling_bart import BartForConditionalGeneration
-        from ..prompt.modeling_t5 import T5ForConditionalGeneration
+        from injection.modeling_bart import BartForConditionalGeneration
+        from injection.modeling_t5 import T5ForConditionalGeneration
 
         if isinstance(self.pretrain_model, BartForConditionalGeneration):
             self.match_n_layer = self.config.decoder_layers

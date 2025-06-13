@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from transformers import AutoTokenizer
 from .base import PushToHubFriendlyModel
-from ..adapter.modeling_auto import AutoModelForSeq2SeqLM
+from injection.modeling_auto import AutoModelForSeq2SeqLM
 
 
 class Model(PushToHubFriendlyModel):
@@ -27,7 +27,7 @@ class Model(PushToHubFriendlyModel):
         )
         self.config = self.pretrain_model.config
         if args.model.use_prefix:
-            from ..adapter.modeling_t5 import T5ForConditionalGeneration
+            from injection.modeling_t5 import T5ForConditionalGeneration
             if isinstance(self.pretrain_model, T5ForConditionalGeneration):
                 self.match_n_layer = self.config.num_decoder_layers
                 self.match_n_head = self.config.num_heads
